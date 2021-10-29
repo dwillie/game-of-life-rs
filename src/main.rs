@@ -99,6 +99,14 @@ fn main() -> Result<(), String> {
         LIVE_VALUE % DEATH_STEP == 0,
         "DEATH_STEP must fit evenly into LIVE_VALUE"
     );
+    assert!(
+        GRID_WIDTH % CELL_SIZE as usize == 0,
+        "CELL_SIZE must fit evenly into GRID_WIDTH"
+    );
+    assert!(
+        GRID_HEIGHT % CELL_SIZE as usize == 0,
+        "CELL_SIZE must fit evenly into GRID_HEIGHT"
+    );
 
     let sdl_context = sdl2::init()?;
     let video_subsystem = sdl_context.video()?;
