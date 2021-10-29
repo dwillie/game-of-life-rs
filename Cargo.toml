@@ -1,0 +1,10 @@
+[package]
+name = "rust-sdl"
+version = "0.1.0"
+authors = ["dwillie <david.willie.1@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+sdl2 = "0.34.5"
+rand = "0.8.4"
+rayon = "1.0.0"
