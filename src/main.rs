@@ -1,20 +1,24 @@
 use sdl2::pixels::Color;
 use sdl2::event::Event;
 use sdl2::keyboard::Keycode;
-use sdl2::rect::{Rect};
+use sdl2::rect::{Rect, Point};
 use std::time::Duration;
 use rand::prelude::*;
 use rayon::prelude::*;
 
-const GRID_WIDTH: usize = 2000;
-const GRID_HEIGHT: usize = 1000;
+const GRID_WIDTH: usize = 700;
+const GRID_HEIGHT: usize = 350;
 const GRID_LENGTH: usize = GRID_WIDTH * GRID_HEIGHT;
-const CELL_SIZE: u32 = 1;
-const BG_COLOUR: Color = Color::RGBA(0, 0, 0, 100);
+const CELL_SIZE: u32 = 3;
+const BG_COLOUR: Color = Color::RGB(0, 0, 0);
 const WINDOW_WIDTH: u32 = (GRID_WIDTH * CELL_SIZE as usize) as u32;
 const WINDOW_HEIGHT: u32 = (GRID_HEIGHT * CELL_SIZE as usize) as u32;
+const LIVE_VALUE: u8 = 250;
+const DEATH_STEP: u8 = 10;
+const FPS_TARGET: u32 = 30;
 
-fn val_to_colour(i: &f32) -> Color {
+fn val_to_colour(iu: &u8) -> Color {
+    let i = *iu as f32 / (LIVE_VALUE as f32);
     let r = (255. * (i * i)).round() as u8;
     let g = (50. * i).round() as u8;
     let b = (255. * i).round() as u8;
@@ -35,16 +39,16 @@ fn index_to_coords(i: usize) -> (i32, i32) {
     return index_to_coords_with_grid_width(i, GRID_WIDTH);
 }
 
-fn is_alive(grid: &[f32], x: i32, y: i32) -> bool {
+fn is_alive(grid: &[u8], x: i32, y: i32) -> bool {
     return 
         x >= 0 && 
         y >= 0 && 
         x < (GRID_WIDTH as i32) &&
         y < (GRID_HEIGHT as i32) &&
-        grid[coords_to_index(x, y)] >= 1.;
+        grid[coords_to_index(x, y)] >= LIVE_VALUE;
 }
 
-fn count_neighbours(i: usize, grid: &[f32]) -> usize {
+fn count_neighbours(i: usize, grid: &[u8]) -> usize {
     let (x, y) = index_to_coords(i);
 
     let mut count = 0;
@@ -59,31 +63,33 @@ fn count_neighbours(i: usize, grid: &[f32]) -> usize {
     return count;
 }
 
-fn step_grid(in_grid: &[f32]) -> [f32; GRID_LENGTH] {
-    let mut out_grid = [0.; GRID_LENGTH];
+fn step_grid(in_grid: &[u8]) -> [u8; GRID_LENGTH] {
+    let mut out_grid = [0; GRID_LENGTH];
     out_grid.par_iter_mut().enumerate().for_each(|(index, value)| {
-        let is_alive = in_grid[index] >= 1.;
+        let is_alive = in_grid[index] >= LIVE_VALUE;
         let neighbours = count_neighbours(index, in_grid);
         if (is_alive && neighbours == 2) || neighbours == 3 {
-            *value = 1.;
-        } else if in_grid[index] > 0. {
-            *value = in_grid[index] - 0.01;
+            *value = LIVE_VALUE;
+        } else if in_grid[index] > 0 {
+            *value = in_grid[index] - DEATH_STEP;
         }
     });
 
     for x in 0..GRID_WIDTH {
-        out_grid[coords_to_index(x as i32, 0)] = random::<f32>() + 0.5;
-        out_grid[coords_to_index(x as i32, (GRID_HEIGHT - 1) as i32)] = random::<f32>() + 0.5;
+        out_grid[coords_to_index(x as i32, 0)] = if random::<bool>() { LIVE_VALUE } else { 0 };
+        out_grid[coords_to_index(x as i32, (GRID_HEIGHT - 1) as i32)] = if random::<bool>() { LIVE_VALUE } else { 0 };
     }
     for y in 0..GRID_HEIGHT {
-        out_grid[coords_to_index(0, y as i32)] = random::<f32>() + 0.5;
-        out_grid[coords_to_index((GRID_WIDTH - 1) as i32, y as i32)] = random::<f32>() + 0.5;   
+        out_grid[coords_to_index(0, y as i32)] = if random::<bool>() { LIVE_VALUE } else { 0 };
+        out_grid[coords_to_index((GRID_WIDTH - 1) as i32, y as i32)] = if random::<bool>() { LIVE_VALUE } else { 0 };
     }
 
     return out_grid;
 }
 
 fn main() -> Result<(), String> {
+    assert!(LIVE_VALUE % DEATH_STEP == 0, "DEATH_STEP must fit evenly into LIVE_VALUE");
+
     let sdl_context = sdl2::init()?;
     let video_subsystem = sdl_context.video()?;
 
@@ -96,14 +102,15 @@ fn main() -> Result<(), String> {
     let mut canvas = window.into_canvas().build()
         .expect("could not make a canvas");
     canvas.set_blend_mode(sdl2::render::BlendMode::None);
+    canvas.set_scale(CELL_SIZE as f32, CELL_SIZE as f32).expect("Error scaling canvas");
 
     canvas.set_draw_color(BG_COLOUR);
     canvas.clear();
     canvas.present();
     let mut event_pump = sdl_context.event_pump()?;
-    let mut grid = [0.; GRID_LENGTH];
+    let mut grid = [0; GRID_LENGTH];
     for i in 0..GRID_LENGTH {
-        grid[i] = random::<f32>() + 0.5
+        grid[i] = if random::<bool>() { LIVE_VALUE } else { 0 };
     }
     'running: loop {
         for event in event_pump.poll_iter() {
@@ -113,7 +120,7 @@ fn main() -> Result<(), String> {
                 },
                 Event::KeyDown { keycode: Some(Keycode::Space), .. } => {
                     for i in 0..GRID_LENGTH {
-                        grid[i] = random::<f32>() + 0.5;
+                        grid[i] = if random::<bool>() { LIVE_VALUE } else { 0 };
                     }
                 },
                 _ => {}
@@ -121,23 +128,17 @@ fn main() -> Result<(), String> {
         }
 
         // 1 billion nanoseconds in a second, targeting 60fps.
-        // ::std::thread::sleep(Duration::new(0, 1_000_000_000 / 60));
+        ::std::thread::sleep(Duration::new(0, 1_000_000_000 / FPS_TARGET));
 
         canvas.set_draw_color(BG_COLOUR);
         canvas.clear();
 
         grid.iter().enumerate().for_each(|(index, &i)| {
-            if i <= 1. { return; }
+            if i <= 1 { return; }
             let (x, y) = index_to_coords(index);
             let cell_colour = val_to_colour(&i);
             canvas.set_draw_color(cell_colour);
-            canvas.fill_rect(
-                Rect::new(
-                    x * CELL_SIZE as i32,
-                    y * CELL_SIZE as i32,
-                    CELL_SIZE,
-                    CELL_SIZE
-                )).unwrap();
+            canvas.draw_point(Point::new(x as i32, y as i32)).unwrap();
         });
 
         canvas.present();
