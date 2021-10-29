@@ -6,8 +6,8 @@ use sdl2::pixels::{Color, PixelFormatEnum};
 use std::thread::sleep;
 use std::time::{Duration, SystemTime};
 
-const GRID_WIDTH: usize = 2560 / 2;
-const GRID_HEIGHT: usize = 1440 / 2;
+const GRID_WIDTH: usize = 1920 / 2;
+const GRID_HEIGHT: usize = 1080 / 2;
 const GRID_LENGTH: usize = GRID_WIDTH * GRID_HEIGHT;
 const CELL_SIZE: u32 = 2;
 const BG_COLOUR: Color = Color::RGB(0, 0, 0);
@@ -106,7 +106,6 @@ fn main() -> Result<(), String> {
         .window("Game of Life", WINDOW_WIDTH, WINDOW_HEIGHT)
         .position_centered()
         .opengl()
-        .fullscreen()
         .build()
         .expect("could not initialize video subsystem");
 
@@ -165,10 +164,6 @@ fn main() -> Result<(), String> {
 
         texture.with_lock(None, |buffer: &mut [u8], _: usize| {
             grid.iter().enumerate().for_each(|(index, &i)| {
-                if i <= 0 {
-                    return;
-                }
-
                 let offset = index * 3;
                 let colour = val_to_colour(&i);
                 buffer[offset] = colour.r;
