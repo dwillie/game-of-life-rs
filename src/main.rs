@@ -6,16 +6,16 @@ use sdl2::pixels::{Color, PixelFormatEnum};
 use std::thread::sleep;
 use std::time::{Duration, SystemTime};
 
-const GRID_WIDTH: usize = 1920 / 2;
-const GRID_HEIGHT: usize = 1080 / 2;
+const GRID_WIDTH: usize = 1500;
+const GRID_HEIGHT: usize = 800;
 const GRID_LENGTH: usize = GRID_WIDTH * GRID_HEIGHT;
-const CELL_SIZE: u32 = 2;
+const CELL_SIZE: u32 = 1;
 const BG_COLOUR: Color = Color::RGB(0, 0, 0);
 const WINDOW_WIDTH: u32 = (GRID_WIDTH * CELL_SIZE as usize) as u32;
 const WINDOW_HEIGHT: u32 = (GRID_HEIGHT * CELL_SIZE as usize) as u32;
 const LIVE_VALUE: u8 = 255;
 const DEATH_STEP: u8 = 1;
-const FPS_TARGET: u32 = 60;
+const FPS_TARGET: Option<u32> = None; // Some(360);
 const LOG_FRAME_TIME: bool = false;
 
 fn val_to_colour(iu: &u8) -> Color {
@@ -30,41 +30,37 @@ fn random_cell_state() -> u8 {
     return if random::<bool>() { LIVE_VALUE } else { 0 };
 }
 
-fn coords_to_index(x: i32, y: i32) -> usize {
+fn coords_to_index(x: usize, y: usize) -> usize {
     return x as usize + (GRID_WIDTH * y as usize);
 }
 
-fn index_to_coords_with_grid_width(i: usize, grid_width: usize) -> (i32, i32) {
-    let x = (i % grid_width) as i32;
-    let y = (i / grid_width) as i32;
+fn index_to_coords_with_grid_width(i: usize, grid_width: usize) -> (usize, usize) {
+    let x = i % grid_width;
+    let y = i / grid_width;
     return (x, y);
 }
 
-fn index_to_coords(i: usize) -> (i32, i32) {
+fn index_to_coords(i: usize) -> (usize, usize) {
     return index_to_coords_with_grid_width(i, GRID_WIDTH);
 }
 
-fn is_alive(grid: &[u8], x: i32, y: i32) -> bool {
-    return x >= 0
-        && y >= 0
-        && x < (GRID_WIDTH as i32)
-        && y < (GRID_HEIGHT as i32)
+fn is_alive(grid: &[u8], x: usize, y: usize) -> bool {
+    return x < GRID_WIDTH
+        && y < GRID_HEIGHT
         && grid[coords_to_index(x, y)] >= LIVE_VALUE;
 }
 
 fn count_neighbours(i: usize, grid: &[u8]) -> usize {
     let (x, y) = index_to_coords(i);
 
-    let mut count = 0;
-    count += is_alive(grid, x - 1, y - 1) as usize;
-    count += is_alive(grid, x, y - 1) as usize;
-    count += is_alive(grid, x + 1, y - 1) as usize;
-    count += is_alive(grid, x - 1, y) as usize;
-    count += is_alive(grid, x + 1, y) as usize;
-    count += is_alive(grid, x - 1, y + 1) as usize;
-    count += is_alive(grid, x, y + 1) as usize;
-    count += is_alive(grid, x + 1, y + 1) as usize;
-    return count;
+    return is_alive(grid, x - 1, y - 1) as usize
+        + is_alive(grid, x, y - 1) as usize
+        + is_alive(grid, x + 1, y - 1) as usize
+        + is_alive(grid, x - 1, y) as usize
+        + is_alive(grid, x + 1, y) as usize
+        + is_alive(grid, x - 1, y + 1) as usize
+        + is_alive(grid, x, y + 1) as usize
+        + is_alive(grid, x + 1, y + 1) as usize;
 }
 
 fn step_grid(in_grid: &[u8]) -> [u8; GRID_LENGTH] {
@@ -83,12 +79,12 @@ fn step_grid(in_grid: &[u8]) -> [u8; GRID_LENGTH] {
         });
 
     for x in 0..GRID_WIDTH {
-        out_grid[coords_to_index(x as i32, 0)] = random_cell_state();
-        out_grid[coords_to_index(x as i32, (GRID_HEIGHT - 1) as i32)] = random_cell_state();
+        out_grid[coords_to_index(x, 0)] = random_cell_state();
+        out_grid[coords_to_index(x, GRID_HEIGHT - 1)] = random_cell_state();
     }
     for y in 0..GRID_HEIGHT {
-        out_grid[coords_to_index(0, y as i32)] = random_cell_state();
-        out_grid[coords_to_index((GRID_WIDTH - 1) as i32, y as i32)] = random_cell_state();
+        out_grid[coords_to_index(0, y)] = random_cell_state();
+        out_grid[coords_to_index(GRID_WIDTH - 1, y)] = random_cell_state();
     }
 
     return out_grid;
@@ -133,6 +129,12 @@ fn main() -> Result<(), String> {
         grid[i] = random_cell_state();
     }
 
+    // Pre-cache the 255 different colour possibilities.
+    let mut colour_map: [Color; GRID_LENGTH] = [Color::BLACK; GRID_LENGTH];
+    for i in 0..GRID_LENGTH {
+        colour_map[i] = val_to_colour(&(i as u8));
+    }
+
     let mut avg_frametime = 0.;
     let mut frame_count = 0.;
     let texture_creator = canvas.texture_creator();
@@ -168,16 +170,18 @@ fn main() -> Result<(), String> {
             }
         }
 
-        sleep(Duration::new(0, 1_000_000_000 / FPS_TARGET));
+        if let Some(fps_target) = FPS_TARGET {
+            sleep(Duration::new(0, 1_000_000_000 / fps_target));
+        }
 
         texture.with_lock(None, |buffer: &mut [u8], _: usize| {
-            grid.iter().enumerate().for_each(|(index, &i)| {
+            for (index, &i) in grid.iter().enumerate() {
                 let offset = index * 3;
-                let colour = val_to_colour(&i);
+                let colour = colour_map[i as usize];
                 buffer[offset] = colour.r;
                 buffer[offset + 1] = colour.g;
                 buffer[offset + 2] = colour.b;
-            });
+            }
         })?;
 
         canvas.set_draw_color(BG_COLOUR);
